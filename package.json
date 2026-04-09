@@ -1,7 +1,7 @@
 {
-  "name": "sesli-sohbet",
-  "version": "1.0.1",
-  "description": "Sesli Sohbet Masaüstü Uygulaması",
+  "name": "hibb-sohbet",
+  "version": "1.1.0",
+  "description": "HIBB Sohbet Masaüstü Uygulaması",
   "main": "main.js",
   "author": "ismailsumnulu",
   "license": "MIT",
@@ -12,8 +12,8 @@
     "build-all": "electron-builder --win --mac"
   },
   "build": {
-    "appId": "com.seslisohbet.app",
-    "productName": "Sesli Sohbet",
+    "appId": "com.hibbsohbet.app",
+    "productName": "HIBB Sohbet",
     "directories": {
       "output": "dist"
     },
@@ -37,17 +37,23 @@
     },
     "mac": {
       "target": [
-        "dmg"
+        {
+          "target": "dmg",
+          "arch": ["x64", "arm64"]
+        }
       ],
       "icon": "icons/icon.png",
-      "category": "public.app-category.social-networking"
+      "category": "public.app-category.social-networking",
+      "hardenedRuntime": false,
+      "gatekeeperAssess": false,
+      "identity": null
     },
     "nsis": {
       "oneClick": true,
       "allowToChangeInstallationDirectory": false,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
-      "shortcutName": "Sesli Sohbet"
+      "shortcutName": "HIBB Sohbet"
     }
   },
   "devDependencies": {

@@ -3,7 +3,7 @@ const { autoUpdater } = require('electron-updater');
 const path = require('path');
 
 // ============================================================
-// Sesli Sohbet - Electron Desktop App
+// HIBB Sohbet - Electron Desktop App
 // Discord benzeri: global shortcuts, system tray, always-on
 // ============================================================
 
@@ -62,7 +62,7 @@ function setupAutoUpdater() {
         console.log('Güncelleme mevcut:', info.version);
         sendUpdateStatus('available', { version: info.version });
         new Notification({
-            title: 'Sesli Sohbet - Güncelleme',
+            title: 'HIBB Sohbet - Güncelleme',
             body: `Yeni versiyon ${info.version} indiriliyor...`,
             icon: path.join(__dirname, 'icons', 'icon.png')
         }).show();
@@ -86,7 +86,7 @@ function setupAutoUpdater() {
         const result = dialog.showMessageBoxSync(mainWindow, {
             type: 'info',
             title: 'Güncelleme Hazır',
-            message: `Sesli Sohbet ${info.version} indirildi.`,
+            message: `HIBB Sohbet ${info.version} indirildi.`,
             detail: 'Güncellemeyi şimdi yüklemek için uygulamayı yeniden başlatın.',
             buttons: ['Şimdi Yeniden Başlat', 'Daha Sonra'],
             defaultId: 0
@@ -119,7 +119,7 @@ function createWindow() {
         height: 800,
         minWidth: 800,
         minHeight: 600,
-        title: 'Sesli Sohbet',
+        title: 'HIBB Sohbet',
         icon: path.join(__dirname, 'icons', 'icon.png'),
         backgroundColor: '#0a0a0f',
         autoHideMenuBar: true,
@@ -188,7 +188,7 @@ function createWindow() {
             if (tray && !app._trayNotified) {
                 app._trayNotified = true;
                 new Notification({
-                    title: 'Sesli Sohbet',
+                    title: 'HIBB Sohbet',
                     body: 'Uygulama sistem tepsisinde çalışmaya devam ediyor.',
                     icon: path.join(__dirname, 'icons', 'icon.png')
                 }).show();
@@ -246,11 +246,11 @@ function createTray() {
     }
 
     tray = new Tray(trayIcon);
-    tray.setToolTip('Sesli Sohbet');
+    tray.setToolTip('HIBB Sohbet');
 
     const contextMenu = Menu.buildFromTemplate([
         {
-            label: '🎙️ Sesli Sohbet',
+            label: '🎙️ HIBB Sohbet',
             enabled: false
         },
         { type: 'separator' },
