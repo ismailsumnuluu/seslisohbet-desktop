@@ -157,19 +157,147 @@ function createWindow() {
         }
     });
 
-    // Ekran paylaşımı: desktopCapturer ile kaynak seç
+    // Ekran paylaşımı: desktopCapturer ile kaynak seçtir (picker penceresi)
     ses.setDisplayMediaRequestHandler(async (request, callback) => {
         try {
             const sources = await desktopCapturer.getSources({
                 types: ['screen', 'window'],
-                thumbnailSize: { width: 150, height: 150 }
+                thumbnailSize: { width: 320, height: 180 },
+                fetchWindowIcons: true
             });
-            if (sources && sources.length > 0) {
-                // İlk ekranı otomatik seç (genellikle ana ekran)
-                callback({ video: sources[0] });
-            } else {
+            if (!sources || sources.length === 0) {
                 callback({});
+                return;
             }
+
+            // Seçim penceresi oluştur
+            const pickerWindow = new BrowserWindow({
+                width: 680,
+                height: 520,
+                parent: mainWindow,
+                modal: true,
+                resizable: false,
+                minimizable: false,
+                maximizable: false,
+                title: 'Ekran Paylaş',
+                autoHideMenuBar: true,
+                backgroundColor: '#1a1a2e',
+                webPreferences: {
+                    contextIsolation: false,
+                    nodeIntegration: true
+                }
+            });
+            pickerWindow.setMenuBarVisibility(false);
+
+            // Kaynak verilerini HTML'e göm
+            const sourceData = sources.map(s => ({
+                id: s.id,
+                name: s.name,
+                thumbnail: s.thumbnail.toDataURL(),
+                appIcon: s.appIcon ? s.appIcon.toDataURL() : null,
+                isScreen: s.id.startsWith('screen:')
+            }));
+
+            const pickerHTML = `<!DOCTYPE html>
+<html><head><meta charset="UTF-8"><style>
+* { margin:0; padding:0; box-sizing:border-box; }
+body { background:#1a1a2e; color:#e0e0e0; font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif; padding:16px; overflow-y:auto; }
+h2 { font-size:1rem; color:#8e9297; margin-bottom:12px; font-weight:500; }
+.tabs { display:flex; gap:8px; margin-bottom:16px; }
+.tab { padding:8px 16px; border-radius:8px; border:none; background:rgba(255,255,255,0.06); color:#b9bbbe; cursor:pointer; font-size:0.9rem; }
+.tab.active { background:#7289da; color:#fff; }
+.grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(200px,1fr)); gap:12px; }
+.item { background:rgba(255,255,255,0.04); border:2px solid transparent; border-radius:10px; padding:8px; cursor:pointer; transition:all 0.15s; }
+.item:hover { background:rgba(255,255,255,0.08); border-color:rgba(114,137,218,0.4); }
+.item.selected { border-color:#7289da; background:rgba(114,137,218,0.12); }
+.item img { width:100%; height:120px; object-fit:contain; border-radius:6px; background:rgba(0,0,0,0.3); display:block; }
+.item .name { display:flex; align-items:center; gap:6px; margin-top:6px; font-size:0.82rem; color:#dcddde; overflow:hidden; white-space:nowrap; text-overflow:ellipsis; }
+.item .name img.icon { width:16px; height:16px; flex-shrink:0; }
+.actions { display:flex; justify-content:flex-end; gap:8px; margin-top:16px; }
+.btn { padding:8px 20px; border-radius:6px; border:none; font-size:0.9rem; cursor:pointer; }
+.btn-cancel { background:rgba(255,255,255,0.06); color:#b9bbbe; }
+.btn-cancel:hover { background:rgba(255,255,255,0.1); }
+.btn-share { background:#7289da; color:#fff; opacity:0.5; pointer-events:none; }
+.btn-share.ready { opacity:1; pointer-events:auto; }
+.btn-share.ready:hover { background:#677bc4; }
+</style></head><body>
+<div class="tabs">
+  <button class="tab active" onclick="showTab('all')">Tümü</button>
+  <button class="tab" onclick="showTab('screen')">Ekranlar</button>
+  <button class="tab" onclick="showTab('window')">Pencereler</button>
+</div>
+<div class="grid" id="grid"></div>
+<div class="actions">
+  <button class="btn btn-cancel" onclick="cancel()">İptal</button>
+  <button class="btn btn-share" id="shareBtn" onclick="share()">Paylaş</button>
+</div>
+<script>
+const { ipcRenderer } = require('electron');
+const sources = ${JSON.stringify(sourceData)};
+let selectedId = null;
+let filter = 'all';
+
+function render() {
+  const grid = document.getElementById('grid');
+  const filtered = filter === 'all' ? sources : sources.filter(s => filter === 'screen' ? s.isScreen : !s.isScreen);
+  grid.innerHTML = filtered.map(s => \`
+    <div class="item \${selectedId===s.id?'selected':''}" onclick="select('\${s.id}')">
+      <img src="\${s.thumbnail}" alt="\${s.name}">
+      <div class="name">
+        \${s.appIcon ? '<img class="icon" src="'+s.appIcon+'">' : ''}
+        <span>\${s.isScreen ? '🖥️ ' : ''}\${s.name}</span>
+      </div>
+    </div>
+  \`).join('');
+}
+
+function showTab(t) {
+  filter = t;
+  document.querySelectorAll('.tab').forEach(el => el.classList.toggle('active', el.textContent === (t==='all'?'Tümü':t==='screen'?'Ekranlar':'Pencereler')));
+  render();
+}
+
+function select(id) {
+  selectedId = id;
+  render();
+  const btn = document.getElementById('shareBtn');
+  btn.classList.add('ready');
+}
+
+function share() {
+  if (selectedId) ipcRenderer.send('screen-picker-result', selectedId);
+}
+
+function cancel() {
+  ipcRenderer.send('screen-picker-result', null);
+}
+
+window.addEventListener('keydown', e => { if (e.key === 'Escape') cancel(); });
+render();
+</script></body></html>`;
+
+            pickerWindow.loadURL('data:text/html;charset=utf-8,' + encodeURIComponent(pickerHTML));
+
+            // Sonucu bekle
+            const selectedId = await new Promise((resolve) => {
+                ipcMain.once('screen-picker-result', (event, id) => {
+                    resolve(id);
+                });
+                pickerWindow.on('closed', () => {
+                    resolve(null);
+                });
+            });
+
+            if (!pickerWindow.isDestroyed()) pickerWindow.close();
+
+            if (selectedId) {
+                const selected = sources.find(s => s.id === selectedId);
+                if (selected) {
+                    callback({ video: selected });
+                    return;
+                }
+            }
+            callback({});
         } catch (e) {
             console.error('Ekran paylaşımı hatası:', e);
             callback({});
