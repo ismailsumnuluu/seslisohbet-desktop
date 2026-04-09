@@ -24,7 +24,8 @@ const defaultShortcuts = {
     toggleDeafen: 'CmdOrCtrl+Shift+D',
     toggleCamera: 'CmdOrCtrl+Shift+V',
     pushToTalk: null,
-    disconnect: 'CmdOrCtrl+Shift+E'
+    disconnect: 'CmdOrCtrl+Shift+E',
+    checkUpdate: 'CmdOrCtrl+Shift+U'
 };
 
 // Kayıtlı kısayolları yükle
@@ -71,6 +72,14 @@ function setupAutoUpdater() {
     autoUpdater.on('update-not-available', () => {
         console.log('Uygulama güncel.');
         sendUpdateStatus('up-to-date');
+        if (isManualUpdateCheck) {
+            isManualUpdateCheck = false;
+            new Notification({
+                title: 'HIBB Sohbet',
+                body: `Uygulama güncel! (v${app.getVersion()})`,
+                icon: path.join(__dirname, 'icons', 'icon.png')
+            }).show();
+        }
     });
 
     autoUpdater.on('download-progress', (progress) => {
@@ -406,6 +415,11 @@ function createTray() {
         },
         { type: 'separator' },
         {
+            label: '🔄 Güncelleme Kontrol',
+            accelerator: shortcuts.checkUpdate,
+            click: () => manualCheckForUpdate()
+        },
+        {
             label: 'Çıkış',
             click: () => {
                 isQuitting = true;
@@ -465,6 +479,13 @@ function registerGlobalShortcuts() {
         });
     }
 
+    // Güncelleme kontrol
+    if (shortcuts.checkUpdate) {
+        globalShortcut.register(shortcuts.checkUpdate, () => {
+            manualCheckForUpdate();
+        });
+    }
+
     // Push-to-Talk (basılı tutunca konuş)
     if (shortcuts.pushToTalk) {
         // PTT: basınca unmute, bırakınca mute
@@ -483,6 +504,26 @@ function sendAction(action) {
     if (mainWindow && mainWindow.webContents) {
         mainWindow.webContents.send('shortcut-action', action);
     }
+}
+
+// Manuel güncelleme kontrolü (kısayol veya IPC ile tetiklenir)
+let isManualUpdateCheck = false;
+function manualCheckForUpdate() {
+    isManualUpdateCheck = true;
+    new Notification({
+        title: 'HIBB Sohbet',
+        body: 'Güncelleme kontrol ediliyor...',
+        icon: path.join(__dirname, 'icons', 'icon.png')
+    }).show();
+    autoUpdater.checkForUpdates().catch(e => {
+        console.error('Manuel güncelleme kontrol hatası:', e);
+        new Notification({
+            title: 'HIBB Sohbet',
+            body: 'Güncelleme kontrolü başarısız: ' + e.message,
+            icon: path.join(__dirname, 'icons', 'icon.png')
+        }).show();
+        isManualUpdateCheck = false;
+    });
 }
 
 // ==================== APP LIFECYCLE ====================
@@ -615,7 +656,7 @@ ipcMain.on('reset-shortcuts', () => {
 
 // IPC: güncelleme kontrol
 ipcMain.on('check-for-update', () => {
-    autoUpdater.checkForUpdates().catch(e => console.error('Manuel güncelleme kontrol hatası:', e));
+    manualCheckForUpdate();
 });
 
 // IPC: güncellemeyi yükle
