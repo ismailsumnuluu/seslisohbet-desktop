@@ -1,0 +1,60 @@
+{
+  "name": "sesli-sohbet",
+  "version": "1.0.0",
+  "description": "Sesli Sohbet Masaüstü Uygulaması",
+  "main": "main.js",
+  "author": "ismailsumnulu",
+  "license": "MIT",
+  "scripts": {
+    "start": "electron .",
+    "build-win": "electron-builder --win",
+    "build-mac": "electron-builder --mac",
+    "build-all": "electron-builder --win --mac"
+  },
+  "build": {
+    "appId": "com.seslisohbet.app",
+    "productName": "Sesli Sohbet",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "main.js",
+      "preload.js",
+      "icons/**/*",
+      "package.json"
+    ],
+    "publish": {
+      "provider": "github",
+      "owner": "ismailsumnuluu",
+      "repo": "seslisohbet-desktop"
+    },
+    "win": {
+      "target": [
+        "nsis"
+      ],
+      "icon": "icons/icon.png",
+      "signAndEditExecutable": false
+    },
+    "mac": {
+      "target": [
+        "dmg"
+      ],
+      "icon": "icons/icon.png",
+      "category": "public.app-category.social-networking"
+    },
+    "nsis": {
+      "oneClick": true,
+      "allowToChangeInstallationDirectory": false,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Sesli Sohbet"
+    }
+  },
+  "devDependencies": {
+    "electron": "^33.0.0",
+    "electron-builder": "^25.0.0"
+  },
+  "dependencies": {
+    "electron-updater": "^6.8.3"
+  }
+}
