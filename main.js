@@ -7,6 +7,13 @@ const path = require('path');
 // Discord benzeri: global shortcuts, system tray, always-on
 // ============================================================
 
+// ===== Chromium Flags (app.whenReady öncesi ayarlanmalı) =====
+// Autoplay: ses/video elementlerini kullanıcı etkileşimi olmadan oynat (arama sesi, uzak ses/video)
+app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required');
+// WebRTC: donanım hızlandırma ve medya akışı
+app.commandLine.appendSwitch('enable-features', 'WebRTCPipeWireCapturer,SharedArrayBuffer');
+app.commandLine.appendSwitch('disable-features', 'IOSurfaceCapturer'); // macOS ekran paylaşımı uyumluluk
+
 // Sunucu URL'si
 const SERVER_URL = 'https://ismailsumnulu.nl/seslisohbet/';
 
@@ -129,7 +136,7 @@ function createWindow() {
         minWidth: 800,
         minHeight: 600,
         title: 'HIBB Sohbet',
-        icon: path.join(__dirname, 'icons', 'icon.png'),
+        icon: path.join(__dirname, 'icons', process.platform === 'win32' ? 'icon.ico' : 'icon.png'),
         backgroundColor: '#0a0a0f',
         autoHideMenuBar: true,
         webPreferences: {
@@ -137,6 +144,8 @@ function createWindow() {
             contextIsolation: true,
             nodeIntegration: false,
             webSecurity: true,
+            navigateOnDragDrop: false,
+            backgroundThrottling: false, // arka plandayken polling/WebRTC devam etsin
             // Kalıcı oturum: cookie, localStorage, sessionStorage
             partition: 'persist:seslisohbet'
         }
@@ -148,7 +157,8 @@ function createWindow() {
     // ===== Medya izinleri: kamera, mikrofon otomatik ver =====
     const ses = session.fromPartition('persist:seslisohbet');
 
-    ses.setPermissionRequestHandler((webContents, permission, callback) => {
+    ses.setPermissionRequestHandler((webContents, permission, callback, details) => {
+        console.log('İzin isteği:', permission, details?.mediaTypes || '');
         const allowed = [
             'media',           // kamera + mikrofon
             'mediaKeySystem',
@@ -157,13 +167,34 @@ function createWindow() {
             'audioCapture',    // mikrofon
             'videoCapture',    // kamera
             'desktopCapture',  // ekran paylaşımı
-            'display-capture'
+            'display-capture',
+            'clipboard-sanitized-write',
+            'clipboard-read',
+            'speaker-selection',
+            'geolocation',
+            'screen-wake-lock'
         ];
-        if (allowed.includes(permission)) {
-            callback(true);
-        } else {
-            callback(false);
-        }
+        callback(allowed.includes(permission));
+    });
+
+    // Electron 33+: İzin kontrolü — getUserMedia/getDisplayMedia için zorunlu
+    ses.setPermissionCheckHandler((webContents, permission, requestingOrigin, details) => {
+        const allowed = [
+            'media',
+            'mediaKeySystem',
+            'notifications',
+            'fullscreen',
+            'audioCapture',
+            'videoCapture',
+            'desktopCapture',
+            'display-capture',
+            'hid',
+            'serial',
+            'speaker-selection',
+            'clipboard-read',
+            'screen-wake-lock'
+        ];
+        return allowed.includes(permission);
     });
 
     // Ekran paylaşımı: desktopCapturer ile kaynak seçtir (picker penceresi)
@@ -315,6 +346,29 @@ render();
 
     mainWindow.loadURL(SERVER_URL);
 
+    // Sertifika hatalarını yönet (self-signed veya geçici sorunlar)
+    mainWindow.webContents.on('certificate-error', (event, url, error, certificate, callback) => {
+        // Kendi sunucumuzsa güven
+        if (url.startsWith(SERVER_URL) || url.includes('ismailsumnulu.nl')) {
+            event.preventDefault();
+            callback(true);
+        } else {
+            callback(false);
+        }
+    });
+
+    // Yeni pencere açma isteklerini yönet (popup/link)
+    mainWindow.webContents.setWindowOpenHandler(({ url }) => {
+        // Aynı domain ise aynı pencerede aç
+        if (url.startsWith(SERVER_URL)) {
+            mainWindow.loadURL(url);
+            return { action: 'deny' };
+        }
+        // Farklı domain ise sistem tarayıcısında aç
+        require('electron').shell.openExternal(url);
+        return { action: 'deny' };
+    });
+
     // Kapatma → tray'e küçült (Discord gibi)
     mainWindow.on('close', (event) => {
         if (!isQuitting) {
@@ -351,9 +405,8 @@ render();
 
     // Console mesajlarını Electron terminaline yönlendir
     mainWindow.webContents.on('console-message', (event, level, message) => {
-        if (level >= 2) { // warnings and errors only
-            console.log('[Web]', message);
-        }
+        const prefix = level === 0 ? '[Web:LOG]' : level === 1 ? '[Web:WARN]' : '[Web:ERR]';
+        console.log(prefix, message);
     });
 }
 
@@ -361,7 +414,8 @@ function createTray() {
     // Tray ikonu: dosya varsa onu kullan, yoksa basit bir ikon oluştur
     let trayIcon;
     try {
-        const iconPath = path.join(__dirname, 'icons', 'tray.png');
+        const trayFile = process.platform === 'win32' ? 'icon.ico' : 'tray.png';
+        const iconPath = path.join(__dirname, 'icons', trayFile);
         trayIcon = nativeImage.createFromPath(iconPath);
         if (trayIcon.isEmpty()) throw new Error('empty');
     } catch (e) {
@@ -453,48 +507,38 @@ function createTray() {
 function registerGlobalShortcuts() {
     // Mute toggle — en önemli özellik
     if (shortcuts.toggleMute) {
-        globalShortcut.register(shortcuts.toggleMute, () => {
-            sendAction('toggle-mute');
-        });
+        try { globalShortcut.register(shortcuts.toggleMute, () => { sendAction('toggle-mute'); }); }
+        catch(e) { console.error('Kısayol kayıt hatası (toggleMute):', e.message); }
     }
 
     // Deafen toggle
     if (shortcuts.toggleDeafen) {
-        globalShortcut.register(shortcuts.toggleDeafen, () => {
-            sendAction('toggle-deafen');
-        });
+        try { globalShortcut.register(shortcuts.toggleDeafen, () => { sendAction('toggle-deafen'); }); }
+        catch(e) { console.error('Kısayol kayıt hatası (toggleDeafen):', e.message); }
     }
 
     // Camera toggle
     if (shortcuts.toggleCamera) {
-        globalShortcut.register(shortcuts.toggleCamera, () => {
-            sendAction('toggle-camera');
-        });
+        try { globalShortcut.register(shortcuts.toggleCamera, () => { sendAction('toggle-camera'); }); }
+        catch(e) { console.error('Kısayol kayıt hatası (toggleCamera):', e.message); }
     }
 
     // Disconnect
     if (shortcuts.disconnect) {
-        globalShortcut.register(shortcuts.disconnect, () => {
-            sendAction('disconnect');
-        });
+        try { globalShortcut.register(shortcuts.disconnect, () => { sendAction('disconnect'); }); }
+        catch(e) { console.error('Kısayol kayıt hatası (disconnect):', e.message); }
     }
 
     // Güncelleme kontrol
     if (shortcuts.checkUpdate) {
-        globalShortcut.register(shortcuts.checkUpdate, () => {
-            manualCheckForUpdate();
-        });
+        try { globalShortcut.register(shortcuts.checkUpdate, () => { manualCheckForUpdate(); }); }
+        catch(e) { console.error('Kısayol kayıt hatası (checkUpdate):', e.message); }
     }
 
     // Push-to-Talk (basılı tutunca konuş)
     if (shortcuts.pushToTalk) {
-        // PTT: basınca unmute, bırakınca mute
-        // Not: globalShortcut keyUp desteklemiyor, bu yüzden
-        // PTT için daha gelişmiş bir çözüm gerekir
-        // Şimdilik toggle olarak çalışır
-        globalShortcut.register(shortcuts.pushToTalk, () => {
-            sendAction('toggle-mute');
-        });
+        try { globalShortcut.register(shortcuts.pushToTalk, () => { sendAction('toggle-mute'); }); }
+        catch(e) { console.error('Kısayol kayıt hatası (pushToTalk):', e.message); }
     }
 
     console.log('Global kısayollar kaydedildi:', Object.entries(shortcuts).filter(([,v]) => v).map(([k,v]) => `${k}: ${v}`).join(', '));
@@ -597,6 +641,9 @@ app.on('activate', () => {
 
 app.on('before-quit', () => {
     isQuitting = true;
+    // Oturum cookie'lerini diske yaz (Electron kapanırken kaybolmasın)
+    const ses = session.fromPartition('persist:seslisohbet');
+    ses.flushStorageData();
 });
 
 app.on('will-quit', () => {
@@ -641,6 +688,11 @@ ipcMain.on('get-shortcuts', (event) => {
     event.sender.send('shortcuts-info', shortcuts);
 });
 
+// IPC: tüm kısayolları getir (invoke — güvenilir promise tabanlı)
+ipcMain.handle('get-shortcuts-data', () => {
+    return { ...shortcuts };
+});
+
 // IPC: kısayolları sıfırla
 ipcMain.on('reset-shortcuts', () => {
     // Tüm kısayolları kaldır
@@ -665,7 +717,80 @@ ipcMain.on('install-update', () => {
     autoUpdater.quitAndInstall(false, true);
 });
 
-// IPC: app versiyonunu getir
+// IPC: app versiyonunu getir (invoke = promise döner)
+ipcMain.handle('get-app-version', () => {
+    return app.getVersion();
+});
+
+// Legacy: eski yöntem de çalışsın
 ipcMain.on('get-app-version', (event) => {
     event.sender.send('app-version', app.getVersion());
+});
+
+// IPC: push bildirim göster
+ipcMain.on('show-notification', (event, { title, body, isCall }) => {
+    try {
+        let iconPath;
+        try {
+            iconPath = path.join(__dirname, 'icons', 'icon.png');
+            if (!fs.existsSync(iconPath)) iconPath = undefined;
+        } catch(e) { iconPath = undefined; }
+
+        const opts = { title, body, silent: false, urgency: 'critical' };
+        if (iconPath) opts.icon = iconPath;
+        const notif = new Notification(opts);
+        notif.show();
+
+        // Tıklanırsa pencereyi öne getir
+        notif.on('click', () => {
+            if (mainWindow) {
+                mainWindow.show();
+                mainWindow.focus();
+            }
+        });
+
+        // Arama bildirimi ise: pencereyi öne getir + bounce/flash
+        if (isCall && mainWindow) {
+            if (!mainWindow.isVisible()) mainWindow.show();
+            if (mainWindow.isMinimized()) mainWindow.restore();
+            // macOS: dock bounce, Windows: taskbar flash
+            if (process.platform === 'darwin') {
+                app.dock.bounce('critical');
+            } else {
+                mainWindow.flashFrame(true);
+                setTimeout(() => { try { mainWindow.flashFrame(false); } catch(e) {} }, 10000);
+            }
+        }
+    } catch(e) {
+        console.error('Bildirim hatası:', e);
+    }
+});
+
+// IPC: Gelen arama - pencereyi ön plana getir
+ipcMain.on('bring-to-front', () => {
+    try {
+        if (mainWindow) {
+            if (!mainWindow.isVisible()) mainWindow.show();
+            if (mainWindow.isMinimized()) mainWindow.restore();
+            mainWindow.setAlwaysOnTop(true);
+            mainWindow.focus();
+            setTimeout(() => {
+                try { if (mainWindow) mainWindow.setAlwaysOnTop(false); } catch(e) {}
+            }, 2000);
+            if (process.platform === 'darwin') {
+                app.dock.bounce('critical');
+            } else {
+                mainWindow.flashFrame(true);
+            }
+        }
+    } catch(e) {
+        console.error('bring-to-front hatası:', e);
+    }
+});
+
+// IPC: Taskbar flash kontrolü
+ipcMain.on('flash-frame', (event, flag) => {
+    try {
+        if (mainWindow) mainWindow.flashFrame(!!flag);
+    } catch(e) {}
 });

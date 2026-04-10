@@ -32,6 +32,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
     getShortcuts: () => {
         ipcRenderer.send('get-shortcuts');
     },
+    // Kısayolları getir (promise tabanlı — güvenilir)
+    getShortcutsData: () => {
+        return ipcRenderer.invoke('get-shortcuts-data');
+    },
     // Kısayolları sıfırla
     resetShortcuts: () => {
         ipcRenderer.send('reset-shortcuts');
@@ -50,15 +54,27 @@ contextBridge.exposeInMainWorld('electronAPI', {
     installUpdate: () => {
         ipcRenderer.send('install-update');
     },
-    // App versiyonunu al
+    // App versiyonunu al (promise döner)
     getAppVersion: () => {
-        ipcRenderer.send('get-app-version');
+        return ipcRenderer.invoke('get-app-version');
     },
-    // App versiyon bilgisini dinle
+    // App versiyon bilgisini dinle (legacy)
     onAppVersion: (callback) => {
         ipcRenderer.on('app-version', (event, version) => {
             callback(version);
         });
+    },
+    // Push bildirim göster
+    showNotification: (title, body, isCall) => {
+        ipcRenderer.send('show-notification', { title, body, isCall: !!isCall });
+    },
+    // Pencereyi ön plana getir (gelen arama)
+    bringToFront: () => {
+        ipcRenderer.send('bring-to-front');
+    },
+    // Taskbar flash
+    flashFrame: (flag) => {
+        ipcRenderer.send('flash-frame', flag);
     },
     // Platform bilgisi
     platform: process.platform,
